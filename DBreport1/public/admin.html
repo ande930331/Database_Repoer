@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>管理員後台</title>
+    <style>
+        body { font-family: "Segoe UI", sans-serif; padding: 20px; background: #f9f9f9; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1 { margin-top: 0; display: flex; align-items: center; justify-content: space-between; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: middle; }
+        th { background-color: #f1f1f1; }
+        input, select, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { padding: 6px 12px; cursor: pointer; border: none; border-radius: 4px; color: white; font-size: 14px; margin-right: 5px; }
+        .filter-row { display: flex; gap: 10px; margin-bottom: 15px; background: #eee; padding: 10px; border-radius: 5px; }
+        .filter-row select { padding: 5px; flex: 1; }
+        .btn-add { background-color: #28a745; font-size: 16px; width: 100%; padding: 10px; margin-top: 10px; }
+        .btn-sold { background-color: #ffc107; color: black; }
+        .btn-del { background-color: #dc3545; }
+        .btn-relist { background-color: #17a2b8; }
+        .btn-edit { background-color: #007bff; }
+        .thumb-img { width: 80px; height: 50px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
+        .form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .modal-content { background-color: #fff; padding: 25px; border-radius: 8px; width: 90%; max-width: 500px; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .close-btn { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #aaa; }
+        label { display: block; margin: 8px 0 4px; font-weight: bold; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            🛠️ 後台管理系統
+            <div style="font-size: 14px; font-weight: normal;">
+                <span id="adminName">...</span> 
+                <button onclick="logout()" style="background:#6c757d;">登出</button>
+                <a href="index.html" style="margin-left:10px; color: #007bff; text-decoration: none;">回前台</a>
+            </div>
+        </h1>
+        <hr>
+
+        <h3>新增車輛</h3>
+        <form id="addMotoForm">
+            <div class="form-row"><input type="text" id="brand" placeholder="品牌" required style="flex:1;"><input type="text" id="model" placeholder="型號" required style="flex:1;"><input type="number" id="price" placeholder="價格" required style="width:120px;"></div>
+            <div class="form-row"><input type="number" id="year" placeholder="年份" required style="flex:1;"><input type="number" id="mileage" placeholder="里程" required style="flex:1;"></div>
+            <textarea id="description" placeholder="車況描述..." style="width:100%; height:60px; margin-bottom:10px; resize: vertical;"></textarea>
+            <div class="form-row"><input type="file" id="imageFile" accept="image/*" style="flex:1;"><select id="license_id"><option value="3">白牌</option><option value="2">黃牌</option><option value="1">紅牌</option></select><select id="category_id"><option value="1">仿賽</option><option value="2">街跑</option><option value="3">街車</option><option value="4">速可達</option><option value="5">冒險</option></select></div>
+            <button type="submit" class="btn-add">＋ 上架車輛</button>
+        </form>
+
+        <h3 style="margin-top: 30px;">庫存列表</h3>
+        <div class="filter-row">
+            <select id="adm_filter_license" onchange="loadCars()"><option value="">所有牌照</option><option value="1">紅牌</option><option value="2">黃牌</option><option value="3">白牌</option></select>
+            <select id="adm_filter_category" onchange="loadCars()"><option value="">所有車型</option><option value="1">仿賽</option><option value="2">街跑</option><option value="3">街車</option><option value="4">速可達</option><option value="5">冒險</option></select>
+            <select id="adm_sort" onchange="loadCars()"><option value="newest">最新上架</option><option value="price_asc">價格低 → 高</option><option value="price_desc">價格高 → 低</option></select>
+        </div>
+        <table id="adminTable"><thead><tr><th>ID</th><th>圖片</th><th>資訊</th><th>價格</th><th>狀態</th><th style="min-width: 180px;">操作</th></tr></thead><tbody></tbody></table>
+
+        <h3 style="margin-top: 40px; border-top: 1px solid #ddd; padding-top: 20px;">📅 預約管理</h3>
+        <table id="reserveTable"><thead><tr><th>狀態</th><th>預約時間</th><th>買家資訊</th><th>預約車款</th><th>備註</th><th>操作</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeEditModal()">&times;</span>
+            <h2 style="margin-top:0;">✏️ 修改車輛資訊</h2>
+            <form id="editMotoForm">
+                <input type="hidden" id="edit_moto_id">
+                <div class="form-row"><input type="text" id="edit_brand" required><input type="text" id="edit_model" required></div>
+                <div class="form-row"><input type="number" id="edit_year"><input type="number" id="edit_mileage"></div>
+                <input type="number" id="edit_price" required style="width:100%;">
+                <textarea id="edit_description" style="width:100%; height:80px;"></textarea>
+                <div class="form-row"><select id="edit_license_id"><option value="3">白牌</option><option value="2">黃牌</option><option value="1">紅牌</option></select><select id="edit_category_id"><option value="1">仿賽</option><option value="2">街跑</option><option value="3">街車</option><option value="4">速可達</option><option value="5">冒險</option></select></div>
+                <input type="file" id="edit_imageFile" accept="image/*" style="width:100%; margin-bottom:15px;">
+                <button type="submit" class="btn-edit" style="width:100%; padding:10px;">💾 儲存修改</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="editResModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <span class="close-btn" onclick="document.getElementById('editResModal').style.display='none'">&times;</span>
+            <h2 style="margin-top:0;">📅 修改預約</h2>
+            <form id="editResForm">
+                <input type="hidden" id="edit_res_id">
+                <p>買家：<b id="edit_res_buyer"></b></p>
+                
+                <label>更換預約車輛</label>
+                <select id="edit_res_moto_select" style="width:100%; padding:8px; margin-bottom:10px; background:#f9f9f9;"></select>
+
+                <label>預約時間</label>
+                <input type="datetime-local" id="edit_res_time" required style="width:100%; padding:8px; margin-bottom:10px;">
+                <label>狀態</label>
+                <select id="edit_res_status" style="width:100%; padding:8px; margin-bottom:10px;">
+                    <option value="pending">⏳ 待確認</option><option value="confirmed">✅ 已確認</option><option value="canceled">❌ 已取消</option>
+                </select>
+                <label>備註 / 訊息</label>
+                <textarea id="edit_res_note" style="width:100%; height:80px; padding:8px;"></textarea>
+                <button type="submit" class="btn-edit" style="width:100%; margin-top:15px;">💾 儲存變更</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/admin.js"></script>
+</body>
+</html>
