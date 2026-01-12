@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>預約看車確認</title>
+    <style>
+        body { font-family: "Segoe UI", sans-serif; background: #f4f4f4; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .container { background: white; width: 100%; max-width: 600px; padding: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        .car-info { display: flex; gap: 20px; background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; align-items: center; }
+        .car-info img { width: 120px; height: 80px; object-fit: cover; border-radius: 4px; }
+        label { display: block; margin: 15px 0 5px; font-weight: bold; }
+        input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 1.1em; cursor: pointer; margin-top: 20px; }
+        button:hover { background: #0056b3; }
+        .back-link { display: block; text-align: center; margin-top: 15px; color: #666; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📅 預約看車確認</h2>
+        
+        <div id="carDisplay" class="car-info">
+            <p>載入中...</p>
+        </div>
+
+        <form id="reserveForm">
+            <input type="hidden" id="moto_id">
+            
+            <label>預約時間</label>
+            <input type="datetime-local" id="reserve_time" required>
+            
+            <label>備註 / 想問的問題 (選填)</label>
+            <textarea id="note" style="height: 100px;" placeholder="例如：我想試騎引擎聲浪、想改約晚上..."></textarea>
+            
+            <button type="submit">確認送出預約</button>
+        </form>
+        <a href="index.html" class="back-link">← 取消，回上一頁</a>
+    </div>
+
+    <script>
+        // 1. 檢查是否登入 (如果沒登入，踢去登入頁)
+        fetch('/api/me').then(res => res.json()).then(data => {
+            if (!data.loggedIn) {
+                alert('請先登入會員才能預約喔！');
+                window.location.href = 'login.html';
+            }
+        });
+
+        // 2. 抓取網址上的 ?id=XX
+        const urlParams = new URLSearchParams(window.location.search);
+        const motoId = urlParams.get('id');
+
+        if (!motoId) {
+            alert('網址錯誤，找不到車輛 ID');
+            window.location.href = 'index.html';
+        } else {
+            loadCarInfo(motoId);
+        }
+
+        // 3. 載入車輛資料
+        async function loadCarInfo(id) {
+            const res = await fetch(`/api/motorcycles/${id}`);
+            const car = await res.json();
+            
+            if (!car || !car.moto_id) {
+                alert('找不到該車輛資料'); // 這就是你原本遇到的錯誤
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // 填入 HTML
+            const imgUrl = car.image_url || 'https://via.placeholder.com/150';
+            document.getElementById('carDisplay').innerHTML = `
+                <img src="${imgUrl}">
+                <div>
+                    <h3 style="margin:0;">${car.brand} ${car.model}</h3>
+                    <p style="margin:5px 0; color:#d00; font-weight:bold;">$${car.price.toLocaleString()}</p>
+                    <small style="color:#666;">${car.year}年 | ${car.license_name}</small>
+                </div>
+            `;
+            document.getElementById('moto_id').value = car.moto_id;
+            
+            // 設定預設時間為明天
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setMinutes(tomorrow.getMinutes() - tomorrow.getTimezoneOffset());
+            document.getElementById('reserve_time').value = tomorrow.toISOString().slice(0, 16);
+            document.getElementById('reserve_time').min = new Date().toISOString().slice(0, 16);
+        }
+
+        // 4. 送出預約
+        document.getElementById('reserveForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const payload = {
+                moto_id: document.getElementById('moto_id').value,
+                reserve_time: document.getElementById('reserve_time').value,
+                note: document.getElementById('note').value
+            };
+
+            const res = await fetch('/api/reservations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await res.json();
+            if (result.success) {
+                alert('預約成功！請至「會員中心」查看狀態。');
+                window.location.href = 'profile.html';
+            } else {
+                alert(result.message || '預約失敗');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>會員中心</title>
+    <style>
+        body { font-family: "Segoe UI", sans-serif; margin: 0; background: #f4f4f4; }
+        nav { background: #333; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .container { max-width: 900px; margin: 30px auto; padding: 20px; }
+        .card { background: white; border-radius: 10px; padding: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h2 { margin-top: 0; border-bottom: 2px solid #f4f4f4; padding-bottom: 15px; color: #333; }
+        .profile-info p { font-size: 1.1em; color: #555; margin: 10px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f9f9f9; color: #666; font-weight: bold; }
+        a { color: white; text-decoration: none; margin-left: 15px; }
+        .btn-home { background: #007bff; padding: 5px 15px; border-radius: 4px; }
+        
+        button { border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; color: white; font-size: 13px; margin-right: 5px; margin-bottom: 3px; }
+        .btn-msg { background: #17a2b8; }
+        .btn-edit { background: #007bff; }
+        .btn-cancel { background: #dc3545; }
+        
+        /* Modal */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        .modal-content { background-color: #fff; padding: 25px; border-radius: 8px; width: 90%; max-width: 400px; position: relative; }
+        .close-btn { position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #aaa; }
+
+        /* 聊天室 */
+        .msg-row { margin-bottom: 8px; display: flex; flex-direction: column; }
+        .msg-bubble { padding: 8px 12px; border-radius: 15px; max-width: 80%; }
+        .my-msg { align-items: flex-end; }
+        .my-msg .msg-bubble { background: #007bff; color: white; border-bottom-right-radius: 2px; }
+        .other-msg { align-items: flex-start; }
+        .other-msg .msg-bubble { background: #e9ecef; color: black; border-bottom-left-radius: 2px; }
+    </style>
+</head>
+<body>
+    <nav>
+        <div style="font-size: 1.5em; font-weight:bold;">🏍️ MotoMarket</div>
+        <div><a href="index.html" class="btn-home">回首頁</a><a href="#" onclick="logout()">登出</a></div>
+    </nav>
+    <div class="container">
+        <div class="card">
+            <h2>👤 我的個人資料</h2>
+            <div class="profile-info">
+                <p><strong>姓名：</strong> <span id="myName">...</span></p>
+                <p><strong>電話：</strong> <span id="myPhone">...</span></p>
+                <p><strong>身分：</strong> <span id="myRole">一般會員</span></p>
+            </div>
+        </div>
+        <div class="card">
+            <h2>📅 我的預約紀錄</h2>
+            <table id="myResTable"><thead><tr><th>車輛</th><th>時間</th><th>狀態</th><th>操作</th></tr></thead><tbody></tbody></table>
+        </div>
+    </div>
+
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="document.getElementById('editModal').style.display='none'">&times;</span>
+            <h3 style="margin-top:0;">✏️ 修改預約</h3>
+            <form id="editForm">
+                <input type="hidden" id="edit_res_id">
+                
+                <label style="display:block; margin-bottom:5px; font-weight:bold;">更換車輛：</label>
+                <select id="edit_moto_id" style="width:100%; padding:8px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;">
+                    <option value="" disabled>載入中...</option>
+                </select>
+
+                <label style="display:block; margin-bottom:5px; font-weight:bold;">預約時間：</label>
+                <input type="datetime-local" id="edit_time" required style="width:100%; padding:8px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;">
+                
+                <label style="display:block; margin-bottom:5px; font-weight:bold;">備註：</label>
+                <textarea id="edit_note" style="width:100%; height:60px; padding:8px; margin-bottom:15px; border:1px solid #ccc; border-radius:4px;"></textarea>
+                
+                <button type="submit" class="btn-edit" style="width:100%; padding:10px;">💾 儲存修改</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="chatModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="document.getElementById('chatModal').style.display='none'">&times;</span>
+            <h3 style="margin-top:0;">💬 聯繫管理員</h3>
+            <div id="chatBox" style="height:250px; overflow-y:scroll; border:1px solid #ddd; padding:10px; margin-bottom:10px; background:#f9f9f9;"></div>
+            <div style="display:flex; gap:5px;">
+                <input type="text" id="chatInput" placeholder="輸入訊息..." style="flex:1; padding:8px; border:1px solid #ccc; border-radius:4px;">
+                <button onclick="sendMessage()" class="btn-msg">傳送</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentResId = null; 
+        
+        // 1. 初始化
+        fetch('/api/me').then(res => res.json()).then(data => {
+            if (!data.loggedIn) { alert('請先登入'); window.location.href = 'login.html'; return; }
+            document.getElementById('myName').textContent = data.user.name;
+            document.getElementById('myPhone').textContent = data.user.phone || '未填寫';
+            document.getElementById('myRole').textContent = data.user.role === 'admin' ? '管理員' : '一般買家';
+            loadMyReservations();
+        });
+
+        function logout() { fetch('/api/logout', { method: 'POST' }).then(() => window.location.href = 'index.html'); }
+
+        // 2. 載入列表
+        async function loadMyReservations() {
+            const res = await fetch('/api/my/reservations');
+            const list = await res.json();
+            const tbody = document.querySelector('#myResTable tbody');
+            tbody.innerHTML = '';
+            
+            if (list.length === 0) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#888;">無預約紀錄</td></tr>'; return; }
+            
+            list.forEach(item => {
+                const tr = document.createElement('tr');
+                let statusStr = '';
+                let actionButtons = `<button onclick="openChat(${item.reserve_id})" class="btn-msg">💬 訊息</button>`;
+
+                if (item.status === 'pending') {
+                    statusStr = '<span style="color:orange; font-weight:bold;">⏳ 待確認</span>';
+                    // 🟢 傳入 currentMotoId (item.moto_id)
+                    actionButtons += `<button onclick="openEdit(${item.reserve_id}, '${item.reserve_time}', '${item.note||''}', ${item.moto_id}, '${item.brand} ${item.model}')" class="btn-edit">✏️ 修改</button>`;
+                    actionButtons += `<button onclick="cancelMyRes(${item.reserve_id})" class="btn-cancel">🚫 取消</button>`;
+                } else if (item.status === 'confirmed') {
+                    statusStr = '<span style="color:green; font-weight:bold;">✅ 已確認</span>';
+                } else {
+                    statusStr = '<span style="color:gray;">❌ 已取消</span>';
+                }
+
+                tr.innerHTML = `
+                    <td>${item.brand} ${item.model}</td>
+                    <td>${new Date(item.reserve_time).toLocaleString()}</td>
+                    <td>${statusStr}</td>
+                    <td>${actionButtons}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+// 🟢 修復版：取消預約函式
+async function cancelMyRes(id) {
+    if (!confirm('確定要取消這筆預約嗎？')) return;
+
+    try {
+        const res = await fetch(`/api/my/reservations/${id}/cancel`, { 
+            method: 'PUT' 
+        });
+        
+        // 先讀取回應
+        const result = await res.json();
+
+        if (result.success) {
+            alert('✅ 預約已成功取消！');
+            loadMyReservations(); // 重新整理列表
+        } else {
+            // 顯示後端傳回來的具體錯誤訊息
+            alert('❌ 取消失敗：' + (result.message || '未知錯誤'));
+        }
+    } catch (error) {
+        console.error(error);
+        alert('❌ 系統錯誤，請稍後再試');
+    }
+}
+
+        // 🟢 4. 打開修改視窗 (含載入可換車輛)
+        async function openEdit(id, timeStr, note, currentMotoId, currentMotoName) {
+            document.getElementById('edit_res_id').value = id;
+            
+            // 時間處理
+            const dt = new Date(timeStr);
+            dt.setMinutes(dt.getMinutes() - dt.getTimezoneOffset());
+            document.getElementById('edit_time').value = dt.toISOString().slice(0, 16);
+            document.getElementById('edit_note').value = note;
+
+            // 🟢 載入車輛選單
+            const select = document.getElementById('edit_moto_id');
+            select.innerHTML = '<option>載入中...</option>';
+            
+            // 抓取所有車輛
+            const res = await fetch('/api/motorcycles');
+            const allCars = await res.json();
+            select.innerHTML = '';
+            
+            // 1. 先加入「目前預約的這台」(必選)
+            let currentOpt = document.createElement('option');
+            currentOpt.value = currentMotoId;
+            currentOpt.text = `(目前) ${currentMotoName}`;
+            currentOpt.selected = true;
+            select.appendChild(currentOpt);
+
+            // 2. 加入其他「上架中 (Available)」的車
+            allCars.forEach(car => {
+                if (car.status === 'available' && car.moto_id !== currentMotoId) {
+                    let opt = document.createElement('option');
+                    opt.value = car.moto_id;
+                    opt.text = `${car.brand} ${car.model} ($${car.price.toLocaleString()})`;
+                    select.appendChild(opt);
+                }
+            });
+
+            document.getElementById('editModal').style.display = 'flex';
+        }
+
+        // 🟢 5. 送出修改 (含 moto_id)
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit_res_id').value;
+            const payload = {
+                moto_id: document.getElementById('edit_moto_id').value, // 新增
+                reserve_time: document.getElementById('edit_time').value,
+                note: document.getElementById('edit_note').value
+            };
+            
+            const res = await fetch(`/api/my/reservations/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (res.ok) {
+                alert('修改成功！');
+                document.getElementById('editModal').style.display = 'none';
+                loadMyReservations();
+            } else {
+                alert('修改失敗');
+            }
+        });
+
+        // 6. 聊天室功能
+        function openChat(id) {
+            currentResId = id;
+            loadMessages(id);
+            document.getElementById('chatModal').style.display = 'flex';
+        }
+
+        async function loadMessages(id) {
+            const box = document.getElementById('chatBox');
+            box.innerHTML = '<div style="text-align:center;">載入中...</div>';
+            const res = await fetch(`/api/reservations/${id}/messages`);
+            const msgs = await res.json();
+            box.innerHTML = '';
+            if(msgs.length===0){ box.innerHTML = '<div style="text-align:center; color:#ccc;">無訊息</div>'; return; }
+            msgs.forEach(m => {
+                const div = document.createElement('div');
+                div.className = 'msg-row';
+                div.classList.add(m.sender_role === 'buyer' ? 'my-msg' : 'other-msg');
+                div.innerHTML = `<div class="msg-bubble">${m.content}</div>`;
+                box.appendChild(div);
+            });
+            box.scrollTop = box.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            if(!input.value.trim()) return;
+            await fetch(`/api/reservations/${currentResId}/messages`, {
+                method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content:input.value})
+            });
+            input.value=''; loadMessages(currentResId);
+        }
+    </script>
+</body>
+</html>
